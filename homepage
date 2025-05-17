@@ -1,0 +1,662 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+    CheckCircle,
+    Circle,
+    Trash2,
+    Edit,
+    Save,
+    Plus,
+    X,
+    Folder,
+    ArrowLeft,
+    ArrowRight,
+    AlertTriangle
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog"
+
+interface TodoItem {
+    id: string;
+    text: string;
+    completed: boolean;
+    description: string;
+    projectId: string;
+}
+
+interface Project {
+    id: string;
+    name: string;
+}
+
+const TodoList: React.FC = () => {
+    const [projects, setProjects] = useState<Project[]>(() => {
+        if (typeof window !== 'undefined') {
+            const savedProjects = localStorage.getItem('projects');
+            try {
+                return savedProjects ? JSON.parse(savedProjects) : [{ id: 'default', name: 'Default' }];
+            } catch (e) {
+                console.error('Failed to parse saved projects:', e);
+                return [{ id: 'default', name: 'Default' }];
+            }
+        }
+        return [{ id: 'default', name: 'Default' }];
+    });
+
+    const [todos, setTodos] = useState<TodoItem[]>(() => {
+        if (typeof window !== 'undefined') {
+            const savedTodos = localStorage.getItem('todos');
+            try {
+                return savedTodos ? JSON.parse(savedTodos) : [];
+            } catch (e) {
+                console.error('Failed to parse saved todos:', e);
+                return [];
+            }
+        }
+        return [];
+    });
+
+    const [newTodoText, setNewTodoText] = useState('');
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editText, setEditText] = useState('');
+    const [editDescription, setEditDescription] = useState('');
+    const [showNewTodoInput, setShowNewTodoInput] = useState(false);
+    const [selectedProjectId, setSelectedProjectId] = useState<string>('default');
+    const [newProjectName, setNewProjectName] = useState('');
+    const [showNewProjectInput, setShowNewProjectInput] = useState(false);
+    const inputRef = useRef<HTMLInputElement>(null);
+    const projectInputRef = useRef<HTMLInputElement>(null);
+    const [currentView, setCurrentView] = useState<'project' | 'task'>('project');
+    const [currentProjectIndex, setCurrentProjectIndex] = useState(0);
+    const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+    const [projectToEdit, setProjectToEdit] = useState<string | null>(null);
+    const [editProjectName, setEditProjectName] = useState('');
+
+
+    // Persist projects to localStorage
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                localStorage.setItem('projects', JSON.stringify(projects));
+            } catch (e) {
+                console.error('Failed to save projects:', e);
+            }
+        }
+    }, [projects]);
+
+    // Persist todos to localStorage
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                localStorage.setItem('todos', JSON.stringify(todos));
+            } catch (e) {
+                console.error('Failed to save todos:', e);
+            }
+        }
+    }, [todos]);
+
+    // Focus input on mount or when toggled
+    useEffect(() => {
+        if (showNewTodoInput && inputRef.current) {
+            inputRef.current.focus();
+        }
+    }, [showNewTodoInput]);
+
+    // Focus on project input
+    useEffect(() => {
+        if (showNewProjectInput && projectInputRef.current) {
+            projectInputRef.current.focus();
+        }
+    }, [showNewProjectInput]);
+
+    const addTodo = () => {
+        if (newTodoText.trim()) {
+            const newTodo: TodoItem = {
+                id: crypto.randomUUID(),
+                text: newTodoText,
+                completed: false,
+                description: '',
+                projectId: selectedProjectId,
+            };
+            setTodos([...todos, newTodo]);
+            setNewTodoText('');
+            setShowNewTodoInput(false);
+        }
+    };
+
+    const toggleComplete = (id: string) => {
+        setTodos(prevTodos =>
+            prevTodos.map(todo =>
+                todo.id === id ? { ...todo, completed: !todo.completed } : todo
+            )
+        );
+    };
+
+    const deleteTodo = (id: string) => {
+        setTodos(prevTodos => prevTodos.filter(todo => todo.id !== id));
+    };
+
+    const startEditing = (todo: TodoItem) => {
+        setEditingId(todo.id);
+        setEditText(todo.text);
+        setEditDescription(todo.description);
+    };
+
+    const saveChanges = (id: string) => {
+        setTodos(prevTodos =>
+            prevTodos.map(todo =>
+                todo.id === id ? { ...todo, text: editText, description: editDescription } : todo
+            )
+        );
+        setEditingId(null);
+        setEditText('');
+        setEditDescription('');
+    };
+
+    const cancelEdit = () => {
+        setEditingId(null);
+        setEditText('');
+        setEditDescription('');
+    }
+
+    const handleAddProject = () => {
+        if (newProjectName.trim()) {
+            const newProject: Project = {
+                id: crypto.randomUUID(),
+                name: newProjectName,
+            };
+            setProjects([...projects, newProject]);
+            setSelectedProjectId(newProject.id);
+            setNewProjectName('');
+            setShowNewProjectInput(false);
+        }
+    };
+
+    const handleDeleteProject = (projectId: string) => {
+        setProjectToDelete(projectId);
+    };
+
+    const confirmDeleteProject = () => {
+        if (projectToDelete) {
+            setProjects(prevProjects => prevProjects.filter(p => p.id !== projectToDelete));
+            setTodos(prevTodos => prevTodos.filter(t => t.projectId !== projectToDelete));
+            if (selectedProjectId === projectToDelete) {
+                setSelectedProjectId('default');
+                if (projects.length > 1) {
+                    setCurrentProjectIndex(0);
+                } else {
+                    setCurrentView('project');
+                }
+            }
+            setProjectToDelete(null);
+        }
+    };
+
+    const cancelDelete = () => {
+        setProjectToDelete(null);
+    };
+
+    const handleEditProject = (project: Project) => {
+        setProjectToEdit(project.id);
+        setEditProjectName(project.name);
+    };
+
+    const saveProjectName = (projectId: string) => {
+        setProjects(prevProjects =>
+            prevProjects.map(project =>
+                project.id === projectId ? { ...project, name: editProjectName } : project
+            )
+        );
+        setProjectToEdit(null);
+        setEditProjectName('');
+    };
+
+    const cancelEditProject = () => {
+        setProjectToEdit(null);
+        setEditProjectName('');
+    }
+
+    const filteredTodos = todos.filter(todo => todo.projectId === selectedProjectId);
+
+    // Animation Variants
+    const todoVariants = {
+        hidden: { opacity: 0, y: -10 },
+        visible: { opacity: 1, y: 0, transition: { duration: 0.3 } },
+        exit: { opacity: 0, x: -20, transition: { duration: 0.2 } },
+    };
+
+    const handleProjectSelect = (projectId: string) => {
+        setSelectedProjectId(projectId);
+        setCurrentView('task');
+    };
+
+    const currentProject = projects.find((p) => p.id === selectedProjectId);
+
+    const goToNextProject = () => {
+        if (currentProjectIndex < projects.length - 1) {
+            setCurrentProjectIndex(currentProjectIndex + 1);
+            setSelectedProjectId(projects[currentProjectIndex + 1].id);
+        }
+    };
+
+    const goToPreviousProject = () => {
+        if (currentProjectIndex > 0) {
+            setCurrentProjectIndex(currentProjectIndex - 1);
+            setSelectedProjectId(projects[currentProjectIndex - 1].id);
+        }
+    };
+
+    const getProjectTaskCounts = (projectId: string) => {
+        const projectTodos = todos.filter(todo => todo.projectId === projectId);
+        const completed = projectTodos.filter(todo => todo.completed).length;
+        const incomplete = projectTodos.length - completed;
+        return { completed, incomplete };
+    };
+
+    return (
+        <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-700 p-4 sm:p-8">
+            <div className="max-w-3xl mx-auto">
+                {currentView === 'project' ? (
+                    <>
+                        <h1 className="text-3xl sm:text-4xl font-bold text-white mb-6 text-center">
+                            Home
+                        </h1>
+                        <div className="mb-6">
+                            <Button
+                                onClick={() => setShowNewProjectInput(true)}
+                                className="bg-green-500 hover:bg-green-600 text-white"
+                            >
+                                <Plus className="mr-2 h-4 w-4" /> New Project
+                            </Button>
+                        </div>
+
+                        <AnimatePresence>
+                            {showNewProjectInput && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                    transition={{ duration: 0.3 }}
+                                    className="mb-6 space-y-4"
+                                >
+                                    <Input
+                                        ref={projectInputRef}
+                                        type="text"
+                                        placeholder="Project Name"
+                                        value={newProjectName}
+                                        onChange={(e) => setNewProjectName(e.target.value)}
+                                        className="bg-gray-800 text-white border-gray-700 placeholder:text-gray-400"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                handleAddProject();
+                                            }
+                                            if (e.key === 'Escape') {
+                                                setShowNewProjectInput(false);
+                                                setNewProjectName('');
+                                            }
+                                        }}
+                                    />
+                                    <div className="flex gap-2">
+                                        <Button
+                                            onClick={handleAddProject}
+                                            className="bg-blue-500 hover:bg-blue-600 text-white"
+                                            disabled={!newProjectName.trim()}
+                                        >
+                                            <Plus className="mr-2 h-4 w-4" /> Add
+                                        </Button>
+                                        <Button
+                                            onClick={() => {
+                                                setShowNewProjectInput(false);
+                                                setNewProjectName('');
+                                            }}
+                                            className="bg-gray-700 hover:bg-gray-600 text-white"
+                                        >
+                                            <X className="mr-2 h-4 w-4" /> Cancel
+                                        </Button>
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {projects.map((project) => {
+                                const { completed, incomplete } = getProjectTaskCounts(project.id);
+                                return (
+                                    <div className="relative group">
+                                        <motion.div
+                                            key={project.id}
+                                            initial={{ opacity: 0, scale: 0.95 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            transition={{ duration: 0.2 }}
+                                            className="bg-gray-800 rounded-lg shadow-md p-4 hover:shadow-lg transition-shadow duration-300 cursor-pointer border border-gray-700 hover:border-gray-600"
+                                            onClick={() => handleProjectSelect(project.id)}
+                                        >
+                                            {projectToEdit === project.id ? (
+                                                <Input
+                                                    type="text"
+                                                    value={editProjectName}
+                                                    onChange={(e) => setEditProjectName(e.target.value)}
+                                                    className="bg-gray-700 text-white border-gray-600 placeholder:text-gray-400 mb-2"
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            saveProjectName(project.id);
+                                                        }
+                                                        if (e.key === 'Escape') {
+                                                            cancelEditProject();
+                                                        }
+                                                    }}
+                                                />
+                                            ) : (
+                                                <div className="flex flex-col">
+                                                    <div className="flex items-center gap-4">
+                                                        <Folder className="h-6 w-6 text-blue-400" />
+                                                        <h2 className="text-xl font-semibold text-white">{project.name}</h2>
+                                                    </div>
+                                                    <p className="text-gray-400 mt-1 text-sm">
+                                                        {completed} completed, {incomplete} incomplete
+                                                    </p>
+                                                </div>
+                                            )}
+                                            <p className="text-gray-400 mt-2 text-sm">{todos.filter(todo => todo.projectId === project.id).length} tasks</p>
+                                        </motion.div>
+                                        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10 space-x-2">
+                                            {projectToEdit === project.id ? (
+                                                <>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => saveProjectName(project.id)}
+                                                        className="text-green-400 hover:text-green-300"
+                                                    >
+                                                        <Save className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={cancelEditProject}
+                                                        className="text-gray-400 hover:text-gray-300"
+                                                    >
+                                                        <X className="h-4 w-4" />
+                                                    </Button>
+                                                </>
+                                            ) : (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() => handleEditProject(project)}
+                                                    className="text-blue-400 hover:text-blue-300"
+                                                >
+                                                    <Edit className="h-4 w-4" />
+                                                </Button>
+                                            )}
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDeleteProject(project.id);
+                                                }}
+                                                className="text-red-400 hover:text-red-300"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <Dialog open={!!projectToDelete} onOpenChange={setProjectToDelete}>
+                            <DialogContent className="bg-gray-800 text-white border-gray-700">
+                                <DialogHeader>
+                                    <DialogTitle className="text-lg text-white">Delete Project</DialogTitle>
+                                    <DialogDescription className="text-gray-400">
+                                        <div className="flex items-center gap-2">
+                                            <AlertTriangle className="h-5 w-5 text-yellow-400" />
+                                            <span>
+                                                Are you sure you want to delete this project and all of its tasks?
+                                                This action cannot be undone.
+                                            </span>
+                                        </div>
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <DialogFooter>
+                                    <Button
+                                        variant="destructive"
+                                        onClick={confirmDeleteProject}
+                                        className="bg-red-500 hover:bg-red-600 text-white"
+                                    >
+                                        Delete
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        onClick={cancelDelete}
+                                        className="bg-gray-700 hover:bg-gray-600 text-white border-gray-600"
+                                    >
+                                        Cancel
+                                    </Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
+                    </>
+                ) : (
+                    <>
+                        <div className="flex items-center gap-4 mb-4">
+                            <Button
+                                variant="ghost"
+                                onClick={() => setCurrentView('project')}
+                                className="text-gray-400 hover:text-white hover:bg-gray-700"
+                            >
+                                <ArrowLeft className="h-5 w-5 mr-2" />
+                                Projects
+                            </Button>
+                            <h1 className="text-3xl sm:text-4xl font-bold text-white">
+                                {currentProject ? currentProject.name : 'Tasks'}
+                            </h1>
+                            <div className="flex gap-2">
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={goToPreviousProject}
+                                    disabled={currentProjectIndex === 0}
+                                    className="text-gray-400 hover:text-white hover:bg-gray-700"
+                                >
+                                    <ArrowLeft className="h-5 w-5" />
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={goToNextProject}
+                                    disabled={currentProjectIndex === projects.length - 1}
+                                    className="text-gray-400 hover:text-white hover:bg-gray-700"
+                                >
+                                    <ArrowRight className="h-5 w-5" />
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* New Todo Input Section */}
+                        <AnimatePresence>
+                            {showNewTodoInput && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                    transition={{ duration: 0.3 }}
+                                    className="mb-6 space-y-4"
+                                >
+                                    <Input
+                                        ref={inputRef}
+                                        type="text"
+                                        placeholder="Add a new todo..."
+                                        value={newTodoText}
+                                        onChange={(e) => setNewTodoText(e.target.value)}
+                                        className="bg-gray-800 text-white border-gray-700 placeholder:text-gray-400"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                addTodo();
+                                            }
+                                            if (e.key === 'Escape') {
+                                                setShowNewTodoInput(false);
+                                                setNewTodoText('');
+                                            }
+                                        }}
+                                    />
+                                    <div className="flex gap-2">
+                                        <Button
+                                            onClick={addTodo}
+                                            className="bg-blue-500 hover:bg-blue-600 text-white"
+                                            disabled={!newTodoText.trim()}
+                                        >
+                                            <Plus className="mr-2 h-4 w-4" /> Add
+                                        </Button>
+                                        <Button
+                                            onClick={() => {
+                                                setShowNewTodoInput(false);
+                                                setNewTodoText('');
+                                            }}
+                                            className="bg-gray-700 hover:bg-gray-600 text-white"
+                                        >
+                                            <X className="mr-2 h-4 w-4" /> Cancel
+                                        </Button>
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
+                        {/* New Todo Button */}
+                        {!showNewTodoInput && (
+                            <div className="mb-6">
+                                <Button
+                                    onClick={() => setShowNewTodoInput(true)}
+                                    className="bg-green-500 hover:bg-green-600 text-white"
+                                >
+                                    <Plus className="mr-2 h-4 w-4" /> New Todo
+                                </Button>
+                            </div>
+                        )}
+
+                        {/* Todo List */}
+                        <AnimatePresence>
+                            {filteredTodos.map((todo) => (
+                                <motion.div
+                                    key={todo.id}
+                                    variants={todoVariants}
+                                    initial="hidden"
+                                    animate="visible"
+                                    exit="exit"
+                                    className="bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-4"
+                                >
+                                    {editingId === todo.id ? (
+                                        <div className="space-y-4">
+                                            <Input
+                                                type="text"
+                                                value={editText}
+                                                onChange={(e) => setEditText(e.target.value)}
+                                                className="bg-gray-700 text-white border-gray-600 placeholder:text-gray-400"
+                                            />
+                                            <Textarea
+                                                value={editDescription}
+                                                onChange={(e) => setEditDescription(e.target.value)}
+                                                placeholder="Add a description..."
+                                                className="bg-gray-700 text-white border-gray-600 placeholder:text-gray-400 min-h-[80px]"
+                                            />
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    onClick={() => saveChanges(todo.id)}
+                                                    className="bg-blue-500 hover:bg-blue-600 text-white"
+                                                >
+                                                    <Save className="mr-2 h-4 w-4" /> Save
+                                                </Button>
+                                                <Button
+                                                    onClick={cancelEdit}
+                                                    className="bg-gray-700 hover:bg-gray-600 text-white"
+                                                >
+                                                    <X className="mr-2 h-4 w-4" /> Cancel
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-start sm:items-center justify-between gap-4">
+                                            <div className="flex items-start gap-4 flex-1">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() => toggleComplete(todo.id)}
+                                                    className={cn(
+                                                        "rounded-full h-10 w-10",
+                                                        todo.completed
+                                                            ? "text-green-500 hover:text-green-400"
+                                                            : "text-gray-400 hover:text-white"
+                                                    )}
+                                                >
+                                                    {todo.completed ? (
+                                                        <CheckCircle className="h-6 w-6" />
+                                                    ) : (
+                                                        <Circle className="h-6 w-6" />
+                                                    )}
+                                                </Button>
+                                                <div className="flex-1">
+                                                    <p
+                                                        className={cn(
+                                                            "text-lg font-medium text-white",
+                                                            todo.completed && "line-through text-gray-400"
+                                                        )}
+                                                    >
+                                                        {todo.text}
+                                                    </p>
+                                                    {todo.description && (
+                                                        <p className="text-sm text-gray-400 mt-1">
+                                                            {todo.description}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() => startEditing(todo)}
+                                                    className="text-blue-400 hover:text-blue-300"
+                                                >
+                                                    <Edit className="h-5 w-5" />
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() => deleteTodo(todo.id)}
+                                                    className="text-red-400 hover:text-red-300"
+                                                >
+                                                    <Trash2 className="h-5 w-5" />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </motion.div>
+                            ))}
+                        </AnimatePresence>
+                        {filteredTodos.length === 0 && (
+                            <div className="text-center text-gray-400 py-8">
+                                No todos yet in this project. Add some!
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default TodoList;
+
